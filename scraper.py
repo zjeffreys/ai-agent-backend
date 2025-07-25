@@ -206,7 +206,10 @@ async def scrape_single_url_with_playwright(url: str) -> Dict[str, Any]:
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor',
                     f'--user-agent={random.choice(USER_AGENTS)}'
-                ]
+                ],
+                # Add these lines to be more explicit about the browser
+                channel=None,  # Use the installed browser, not a system Chrome
+                executable_path=None  # Let Playwright find the installed browser
             )
             
             try:
