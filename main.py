@@ -98,6 +98,11 @@ class AnalyzeBusinessResponse(BaseModel):
     visual_opportunities: list[str]
     team_ai_readiness: str
 
+class ChatRequest(BaseModel):
+    chatbot: Dict[str, Any]
+    messages: list  # Conversation history
+    businessInfo: str = ""
+
 @app.get("/")
 async def root():
     """
@@ -246,6 +251,36 @@ async def analyze_business(request: AnalyzeBusinessRequest):
         return AnalyzeBusinessResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze business: {str(e)}")
+
+@app.post("/api/chat")
+async def chat_endpoint(req: ChatRequest):
+    chatbot = req.chatbot
+    messages = req.messages
+    business_info = req.businessInfo
+
+    system_prompt = f"""
+You are a helpful assistant for the business \"{chatbot.get('name', 'Business')}\".
+Tone: {chatbot.get('tone', 'Friendly')}
+Response style: {chatbot.get('response_style', 'Short')}
+Knowledge sources:
+{chr(10).join('- ' + entry for entry in (chatbot.get('manual_entries') or []))}
+{f'Business Vault Info: {business_info}' if chatbot.get('knowledge_sources') and 'Business Vault' in chatbot['knowledge_sources'] else ''}
+Prompts: {'; '.join(chatbot.get('prompts') or [])}
+Language: {', '.join(chatbot.get('languages') or ['English'])}
+"""
+
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+
+    try:
+        response = await run_in_threadpool(
+            client.chat.completions.create,
+            model="gpt-4",
+            messages=full_messages
+        )
+        answer = response.choices[0].message.content
+        return {"answer": answer}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chatbot failed: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000) 
