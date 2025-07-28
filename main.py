@@ -42,6 +42,22 @@ def remove_quotes(text: str) -> str:
     """Remove all double and single quotes from text, replacing them with spaces."""
     return text.replace('"', ' ').replace("'", ' ')
 
+SUMMARIZATION_PROMPT = """
+You are an expert AI that extracts only the most important business-related information from website content.
+
+Focus on details like:
+- What the business does
+- Services or products offered
+- Mission or values
+- Key differentiators
+- Contact or social links (if available)
+
+Only return useful information in a clean format without fluff or boilerplate text.
+
+Here is the content:
+"{content}"
+"""
+
 class ScrapeRequest(BaseModel):
     url: HttpUrl
 
@@ -127,7 +143,7 @@ async def root():
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape_url(request: ScrapeRequest):
     """
-    Scrape a single URL with robots.txt compliance
+    Scrape a single URL with robots.txt compliance and condense long content using GPT
     
     Args:
         request: ScrapeRequest containing the URL to scrape
@@ -138,14 +154,29 @@ async def scrape_url(request: ScrapeRequest):
     start_time = time.time()
     try:
         result = await scrape_website_old(str(request.url))
+        content = remove_quotes(result["main_page"]["content"])
         scrape_time = time.time() - start_time
-        
+
+        # Summarize with GPT if content is too long
+        if len(content) > 1000:
+            response = await run_in_threadpool(
+                client.chat.completions.create,
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a business content summarizer."},
+                    {"role": "user", "content": SUMMARIZATION_PROMPT.format(content=content)}
+                ],
+                temperature=0.4,
+                max_tokens=600
+            )
+            content = response.choices[0].message.content.strip()
+
         main_page = PageData(
             url=result["main_page"]["url"],
             title=remove_quotes(result["main_page"]["title"]),
-            content=remove_quotes(result["main_page"]["content"]),
+            content=content,
             status_code=result["main_page"]["status_code"],
-            content_length=len(result["main_page"]["content"])
+            content_length=len(content)
         )
         
         return ScrapeResponse(
