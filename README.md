@@ -117,6 +117,38 @@ GET /check-robots?url=https://example.com
 }
 ```
 
+### `/contact` (POST)
+Submit a contact form to Google Sheets via Google Apps Script
+
+**Request Body:**
+```json
+{
+  "firstName": "string (required)",
+  "lastName": "string (required)",
+  "email": "string (required, valid email format)",
+  "company": "string (optional)",
+  "phone": "string (optional)",
+  "subject": "string (required, one of: general, pilot, partnership, technical, pricing, other)",
+  "message": "string (required, max 1000 characters)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Contact form submitted successfully",
+  "submission_id": "uuid-string"
+}
+```
+
+**Validation Rules:**
+- `firstName`, `lastName`, `email`, `subject`, and `message` are required
+- `email` must be in valid email format
+- `subject` must be one of: general, pilot, partnership, technical, pricing, other
+- `message` must be 1000 characters or less
+- `company` and `phone` are optional
+
 ## 🔧 Configuration
 
 ### ScrapingConfig Settings

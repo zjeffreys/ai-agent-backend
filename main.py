@@ -423,6 +423,119 @@ async def get_business_by_id(business_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch business: {str(e)}")
 
+# Contact submission models
+class ContactSubmissionRequest(BaseModel):
+    firstName: str
+    lastName: str
+    email: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    subject: str  # general, pilot, partnership, technical, pricing, other
+    message: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "firstName": "John",
+                "lastName": "Doe",
+                "email": "john.doe@example.com",
+                "company": "Acme Corp",
+                "phone": "+1-555-123-4567",
+                "subject": "general",
+                "message": "I'm interested in learning more about your AI services."
+            }
+        }
+
+class ContactSubmissionResponse(BaseModel):
+    success: bool
+    message: str
+    submission_id: Optional[str] = None
+
+# Contact submission endpoint
+@app.post("/api/contact", response_model=ContactSubmissionResponse)
+async def submit_contact_form(contact_data: ContactSubmissionRequest):
+    """Submit a contact form to Google Sheets via Google Apps Script"""
+    try:
+        # Validate subject field
+        valid_subjects = ["general", "pilot", "partnership", "technical", "pricing", "other"]
+        if contact_data.subject not in valid_subjects:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid subject. Must be one of: {', '.join(valid_subjects)}"
+            )
+        
+        # Validate message length
+        if len(contact_data.message) > 1000:
+            raise HTTPException(
+                status_code=400,
+                detail="Message must be 1000 characters or less"
+            )
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, contact_data.email):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid email format"
+            )
+        
+        # Prepare data for Google Apps Script
+        import requests
+        
+        google_apps_script_url = "https://script.google.com/macros/s/AKfycbwmP-iqoR44crmHYfpO-AlYH7n2LOxq90QFkiR6lq8DfMoubZSgolg8OfPOVuOhHOak/exec"
+        
+        # Format data for Google Sheets
+        sheet_data = {
+            "firstName": contact_data.firstName,
+            "lastName": contact_data.lastName,
+            "email": contact_data.email,
+            "company": contact_data.company or "",
+            "phone": contact_data.phone or "",
+            "subject": contact_data.subject,
+            "message": contact_data.message,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Send data to Google Apps Script
+        response = requests.post(
+            google_apps_script_url,
+            json=sheet_data,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            # Generate a submission ID for tracking
+            submission_id = str(uuid.uuid4())
+            
+            logger.info(f"Contact form submitted successfully: {submission_id}")
+            
+            return ContactSubmissionResponse(
+                success=True,
+                message="Contact form submitted successfully",
+                submission_id=submission_id
+            )
+        else:
+            logger.error(f"Google Apps Script returned status {response.status_code}: {response.text}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to submit contact form. Please try again later."
+            )
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request to Google Apps Script failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit contact form. Please try again later."
+        )
+    except Exception as e:
+        logger.error(f"Contact form submission failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred. Please try again later."
+        )
+
 # Background task functions
 async def process_scraping_task(crawl_id: str):
     """Background task to scrape URLs"""
