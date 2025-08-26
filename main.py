@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from typing import List, Dict, Any, Optional
@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 import logging
 from supabase import create_client, Client
+from document_processor import document_processor, ProcessedDocument
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -451,6 +452,25 @@ class ContactSubmissionResponse(BaseModel):
     message: str
     submission_id: Optional[str] = None
 
+# Document Processing Models
+class SensitiveDataPatternResponse(BaseModel):
+    pattern_type: str
+    description: str
+    risk_level: str
+
+class ProcessedDocumentResponse(BaseModel):
+    filename: str
+    content: str
+    sensitive_data_found: List[SensitiveDataPatternResponse]
+    processing_summary: Dict[str, Any]
+    anonymized_content: str
+
+class DocumentProcessingResponse(BaseModel):
+    documents: List[ProcessedDocumentResponse]
+    total_documents: int
+    total_sensitive_items_found: int
+    processing_time: float
+
 # Contact submission endpoint
 @app.post("/api/contact", response_model=ContactSubmissionResponse)
 async def submit_contact_form(contact_data: ContactSubmissionRequest):
@@ -535,6 +555,80 @@ async def submit_contact_form(contact_data: ContactSubmissionRequest):
             status_code=500,
             detail="An unexpected error occurred. Please try again later."
         )
+
+# Document processing endpoint
+@app.post("/api/process-documents", response_model=DocumentProcessingResponse)
+async def process_documents(
+    files: List[UploadFile] = File(..., description="Documents to process (max 10)"),
+    anonymization_type: str = Form("redact", description="Type of anonymization: redact, anonymize, or mask"),
+    remove_patterns: str = Form("[]", description="JSON string of custom patterns to remove"),
+    preserve_metadata: bool = Form(False, description="Whether to preserve document metadata")
+):
+    """
+    Process multiple documents and remove/anonymize sensitive data.
+    
+    Supports: PDF, DOCX, TXT files
+    Max files: 10
+    Anonymization types: redact, anonymize, mask
+    """
+    
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 documents allowed")
+    
+    if anonymization_type not in ["redact", "anonymize", "mask"]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid anonymization_type. Must be one of: redact, anonymize, mask"
+        )
+    
+    start_time = time.time()
+    
+    try:
+        # Process documents using the document processor
+        processed_docs = document_processor.process_multiple_documents(files, anonymization_type)
+        
+        if not processed_docs:
+            raise HTTPException(
+                status_code=400, 
+                detail="No valid documents were processed. Supported formats: PDF, DOCX, TXT"
+            )
+        
+        # Convert to response format
+        response_docs = []
+        total_sensitive_items = 0
+        
+        for doc in processed_docs:
+            # Convert sensitive data patterns to response format
+            sensitive_patterns = []
+            for pattern in doc.sensitive_data_found:
+                sensitive_patterns.append(SensitiveDataPatternResponse(
+                    pattern_type=pattern.pattern_type,
+                    description=pattern.description,
+                    risk_level=pattern.risk_level
+                ))
+            
+            response_docs.append(ProcessedDocumentResponse(
+                filename=doc.filename,
+                content=doc.content,
+                sensitive_data_found=sensitive_patterns,
+                processing_summary=doc.processing_summary,
+                anonymized_content=doc.anonymized_content
+            ))
+            
+            total_sensitive_items += len(doc.sensitive_data_found)
+        
+        processing_time = time.time() - start_time
+        
+        return DocumentProcessingResponse(
+            documents=response_docs,
+            total_documents=len(response_docs),
+            total_sensitive_items_found=total_sensitive_items,
+            processing_time=round(processing_time, 2)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing documents: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing documents: {str(e)}")
 
 # Background task functions
 async def process_scraping_task(crawl_id: str):
