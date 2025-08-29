@@ -15,7 +15,7 @@ from datetime import datetime
 import json
 import logging
 from supabase import create_client, Client
-from document_processor import document_processor, ProcessedDocument
+from document_processor import document_processor, ProcessedDocument, SensitiveDataMatch
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -453,17 +453,27 @@ class ContactSubmissionResponse(BaseModel):
     submission_id: Optional[str] = None
 
 # Document Processing Models
-class SensitiveDataPatternResponse(BaseModel):
+class SensitiveDataLocation(BaseModel):
+    """Enhanced sensitive data pattern with location information"""
     pattern_type: str
     description: str
     risk_level: str
+    original_text: str  # The actual sensitive data found
+    start_position: int  # Character position in document
+    end_position: int
+    page_number: Optional[int] = None  # For PDFs
+    line_number: Optional[int] = None  # For text-based documents
+    context_before: str  # Text before the sensitive data (for highlighting)
+    context_after: str   # Text after the sensitive data (for highlighting)
 
 class ProcessedDocumentResponse(BaseModel):
     filename: str
-    content: str
-    sensitive_data_found: List[SensitiveDataPatternResponse]
+    original_content: str  # Renamed from 'content' for clarity
+    sensitive_data_locations: List[SensitiveDataLocation]  # Enhanced from 'sensitive_data_found'
     processing_summary: Dict[str, Any]
     anonymized_content: str
+    content_tokens: List[Dict[str, Any]]  # Tokenized content for frontend rendering
+    page_breakdown: Optional[List[Dict[str, Any]]] = None  # Page-specific sensitive data summary
 
 class DocumentProcessingResponse(BaseModel):
     documents: List[ProcessedDocumentResponse]
@@ -562,7 +572,9 @@ async def process_documents(
     files: List[UploadFile] = File(..., description="Documents to process (max 10)"),
     anonymization_type: str = Form("redact", description="Type of anonymization: redact, anonymize, or mask"),
     remove_patterns: str = Form("[]", description="JSON string of custom patterns to remove"),
-    preserve_metadata: bool = Form(False, description="Whether to preserve document metadata")
+    preserve_metadata: bool = Form(True, description="Whether to preserve document metadata (default: true)"),
+    include_highlighting: bool = Form(True, description="Whether to include tokenized content for frontend rendering"),
+    include_page_breakdown: bool = Form(True, description="Whether to include page-by-page breakdown")
 ):
     """
     Process multiple documents and remove/anonymize sensitive data.
@@ -570,6 +582,12 @@ async def process_documents(
     Supports: PDF, DOCX, TXT files
     Max files: 10
     Anonymization types: redact, anonymize, mask
+    
+    Enhanced Features:
+    - Returns tokenized content for optimal frontend rendering
+    - Provides sensitive data locations with context
+    - Page-by-page breakdown for PDFs
+    - Original content preservation option
     """
     
     if len(files) > 10:
@@ -601,18 +619,27 @@ async def process_documents(
             # Convert sensitive data patterns to response format
             sensitive_patterns = []
             for pattern in doc.sensitive_data_found:
-                sensitive_patterns.append(SensitiveDataPatternResponse(
+                sensitive_patterns.append(SensitiveDataLocation(
                     pattern_type=pattern.pattern_type,
                     description=pattern.description,
-                    risk_level=pattern.risk_level
+                    risk_level=pattern.risk_level,
+                    original_text=pattern.original_text,
+                    start_position=pattern.start_position,
+                    end_position=pattern.end_position,
+                    page_number=pattern.page_number,
+                    line_number=pattern.line_number,
+                    context_before=pattern.context_before,
+                    context_after=pattern.context_after
                 ))
             
             response_docs.append(ProcessedDocumentResponse(
                 filename=doc.filename,
-                content=doc.content,
-                sensitive_data_found=sensitive_patterns,
+                original_content=doc.content if preserve_metadata else "",
+                sensitive_data_locations=sensitive_patterns,
                 processing_summary=doc.processing_summary,
-                anonymized_content=doc.anonymized_content
+                anonymized_content=doc.anonymized_content,
+                content_tokens=doc.content_tokens if include_highlighting else [],
+                page_breakdown=doc.page_breakdown if include_page_breakdown else None
             ))
             
             total_sensitive_items += len(doc.sensitive_data_found)
