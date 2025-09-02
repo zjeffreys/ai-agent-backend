@@ -101,6 +101,10 @@ class ChatRequest(BaseModel):
     messages: list  # Conversation history
     businessInfo: str = ""
 
+class FilteredChatRequest(BaseModel):
+    messages: list  # Conversation history
+    filtered_content: str = ""  # The cleaned/filtered content to use as context
+
 # New models for refactored endpoints
 class ScrapeUrlsRequest(BaseModel):
     urls: List[str]
@@ -226,6 +230,62 @@ Language: {', '.join(chatbot.get('languages') or ['English'])}
         return {"answer": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chatbot failed: {str(e)}")
+
+@app.post("/api/filtered-chat", response_model=Dict[str, Any])
+async def filtered_chat_endpoint(req: FilteredChatRequest):
+    """
+    Endpoint for a simpler chat interface that works with filtered content.
+    """
+    messages = req.messages
+    filtered_content = req.filtered_content
+
+    # Validate and format messages
+    formatted_messages = []
+    for i, msg in enumerate(messages):
+        if isinstance(msg, dict) and "role" in msg and "content" in msg:
+            formatted_messages.append(msg)
+        elif isinstance(msg, str):
+            # If it's a string, assume it's a user message
+            formatted_messages.append({"role": "user", "content": msg})
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid message format at index {i}. Expected object with 'role' and 'content' or string"
+            )
+
+    system_prompt = (
+        "You are a helpful assistant for the business. "
+        "You are given a cleaned/filtered website content and a conversation history. "
+        "Your task is to provide a response based on the provided context and history. "
+        "If the context is not relevant or contains sensitive information, "
+        "you should acknowledge it and refer to the conversation history for details. "
+        "Do not make up information or generate new content that is not in the provided context. "
+        "If you cannot provide a relevant answer based on the context, "
+        "you should politely decline or ask for clarification."
+    )
+
+    # Add filtered content as context if provided
+    if filtered_content:
+        context_message = {
+            "role": "system", 
+            "content": f"Context from filtered content: {filtered_content}"
+        }
+        full_messages = [{"role": "system", "content": system_prompt}, context_message] + formatted_messages
+    else:
+        full_messages = [{"role": "system", "content": system_prompt}] + formatted_messages
+
+    try:
+        response = await run_in_threadpool(
+            client.chat.completions.create,
+            model="gpt-4o",
+            messages=full_messages,
+            max_tokens=4096,
+            temperature=0.3
+        )
+        answer = response.choices[0].message.content
+        return {"answer": answer}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Filtered Chatbot failed: {str(e)}")
 
 # New refactored endpoints
 @app.post("/scrape-urls", response_model=ScrapeUrlsResponse)
