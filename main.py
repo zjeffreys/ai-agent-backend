@@ -258,6 +258,11 @@ async def filtered_chat_endpoint(req: FilteredChatRequest):
     "Sensitive information in user messages has been redacted and replaced with placeholders "
     "like [NAME], [EMAIL], [PHONE], [SSN], etc. "
     "Answer questions naturally using the context provided, even with redacted information."
+    "Provide short, concise answers that are easy to understand and follow."
+    "If you cannot provide a relevant answer based on the context, "
+    "you should politely ask for clarification."
+    "If you cannot provide a relevant answer based on the context, "
+    "If you are just provided with a document, claim, etc ask the user for to ask questions about the document, claim, etc."
     )
 
     # Add filtered content as context if provided
