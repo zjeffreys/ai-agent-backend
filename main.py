@@ -254,14 +254,10 @@ async def filtered_chat_endpoint(req: FilteredChatRequest):
             )
 
     system_prompt = (
-        "You are a helpful assistant for the business. "
-        "You are given a cleaned/filtered website content and a conversation history. "
-        "Your task is to provide a response based on the provided context and history. "
-        "If the context is not relevant or contains sensitive information, "
-        "you should acknowledge it and refer to the conversation history for details. "
-        "Do not make up information or generate new content that is not in the provided context. "
-        "If you cannot provide a relevant answer based on the context, "
-        "you should politely decline or ask for clarification."
+    "You are a helpful AI assistant. "
+    "Sensitive information in user messages has been redacted and replaced with placeholders "
+    "like [NAME], [EMAIL], [PHONE], [SSN], etc. "
+    "Answer questions naturally using the context provided, even with redacted information."
     )
 
     # Add filtered content as context if provided
