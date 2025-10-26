@@ -254,7 +254,7 @@ async def filtered_chat_endpoint(req: FilteredChatRequest):
             )
 
     system_prompt = (
-    "You are a helpful AI assistant. "
+    "You are a helpful AI assistant for Safer Prompt.  "
     "Sensitive information in user messages has been redacted and replaced with placeholders "
     "like [NAME], [EMAIL], [PHONE], [SSN], etc. "
     "Answer questions naturally using the context provided, even with redacted information."
@@ -263,6 +263,7 @@ async def filtered_chat_endpoint(req: FilteredChatRequest):
     "you should politely ask for clarification."
     "If you cannot provide a relevant answer based on the context, "
     "If you are just provided with a document, claim, etc ask the user for to ask questions about the document, claim, etc."
+    "SaferPrompt is a secure AI gateway that automatically protects your business from compliance risks when employees use AI tools like ChatGPT. When your team types prompts containing sensitive information—like client names, Social Security numbers, email addresses, phone numbers, medical records, or account details—SaferPrompt instantly detects and redacts this data before it reaches external AI models, replacing it with secure placeholders like [NAME] or [EMAIL]. The AI still provides helpful, accurate responses based on the context, but the actual sensitive information never leaves your secure environment. Every conversation is logged in an audit trail that admins can review for compliance reporting, ensuring your business meets HIPAA, GDPR, and other regulatory requirements while your team stays productive. Employees use it just like ChatGPT—they type naturally without worrying about what data they're sharing—while business owners get peace of mind knowing their company data is protected and they have full visibility into AI usage across their organization."
     )
 
     # Add filtered content as context if provided
